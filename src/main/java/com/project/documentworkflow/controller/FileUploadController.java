@@ -22,14 +22,25 @@ public class FileUploadController {
     @PostMapping("/upload")
     public ApiResponse<UploadResponse> upload(
             @RequestHeader("Authorization") String authHeader,
-            @RequestParam("file") MultipartFile file) throws Exception {
+            @RequestParam("file") MultipartFile file) {
 
-        // Extract uploader email from JWT token
-        String token = authHeader.replace("Bearer ", "");
-        String uploaderEmail = jwtUtil.extractEmail(token);
+        try {
+            // Extract uploader email from JWT token
+            String token = authHeader.replace("Bearer ", "");
+            String uploaderEmail = jwtUtil.extractEmail(token);
 
-        UploadResponse response = documentWorkflowService.processUpload(file, uploaderEmail);
+            // Validate file
+            if (file == null || file.isEmpty()) {
+                return new ApiResponse<>(false, null, "No file provided");
+            }
 
-        return new ApiResponse<>(true, response, null);
+            // Process upload
+            UploadResponse response = documentWorkflowService.processUpload(file, uploaderEmail);
+
+            return new ApiResponse<>(true, response, null);
+
+        } catch (Exception e) {
+            return new ApiResponse<>(false, null, "Upload failed: " + e.getMessage());
+        }
     }
 }

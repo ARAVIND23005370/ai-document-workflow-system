@@ -64,16 +64,36 @@ public class DecisionEngineService {
             }
 
             if (failed) {
-                decision.setDecisionType("REJECTED");
-                decision.setDecisionSource("FAILED_RULE: " + failedRuleName);
-                document.setStatus("REJECTED");
-                auditService.log(documentId, "REJECTED", "SYSTEM", "Rejected by rule: " + failedRuleName);
-                emailNotificationService.sendRejectionEmailIfAllowed(document, failedRuleName);
+                // Check if score is in REVIEW zone (between 30% and 70%)
+                double score = ocrData.getConfidenceScore();
+                if (score >= 0.30 && score < 0.70) {
+                    decision.setDecisionType("REVIEW");
+                    decision.setDecisionSource("SYSTEM_FLAGGED");
+                    decision.setDecisionReason("Confidence score " +
+                            String.format("%.0f", score * 100) +
+                            "% is borderline — requires manual review");
+                    document.setStatus("REVIEW");
+                    auditService.log(documentId, "REVIEW", "SYSTEM",
+                            "Flagged for manual review — confidence: " +
+                                    String.format("%.0f", score * 100) + "%");
+                } else {
+                    decision.setDecisionType("REJECTED");
+                    decision.setDecisionSource("FAILED_RULE: " + failedRuleName);
+                    decision.setDecisionReason("OCR confidence " +
+                            String.format("%.0f", score * 100) +
+                            "% failed rule: " + failedRuleName);
+                    document.setStatus("REJECTED");
+                    auditService.log(documentId, "REJECTED", "SYSTEM",
+                            "Rejected by rule: " + failedRuleName);
+                    emailNotificationService.sendRejectionEmailIfAllowed(document, failedRuleName);
+                }
             } else {
                 decision.setDecisionType("APPROVED");
                 document.setStatus("APPROVED");
-                auditService.log(documentId, "APPROVED", "SYSTEM", "Passed all " + rules.size() + " rules");
+                auditService.log(documentId, "APPROVED", "SYSTEM",
+                        "Passed all " + rules.size() + " rules");
             }
+
         }
 
         decisionRepository.save(decision);
@@ -83,26 +103,28 @@ public class DecisionEngineService {
 
     private String assignFolder(String documentType) {
         if (documentType == null) return "uploads/UNKNOWN/";
-        return switch (documentType.toUpperCase()) {
-            case "INVOICE"     -> "uploads/INVOICES/";
-            case "COMPLAINT"   -> "uploads/COMPLAINTS/";
-            case "APPLICATION" -> "uploads/APPLICATIONS/";
-            case "REPORT"      -> "uploads/REPORTS/";
-            case "CONTRACT"    -> "uploads/CONTRACTS/";
-            case "IDENTITY"    -> "uploads/IDENTITY/";
-            case "LOAN"        -> "uploads/LOANS/";
-            case "MORTGAGE"    -> "uploads/MORTGAGES/";
-            case "FINANCIAL"   -> "uploads/FINANCIAL/";
-            default            -> "uploads/GENERAL/";
-        };
+        switch (documentType.toUpperCase()) {
+            case "INVOICE":     return "uploads/INVOICES/";
+            case "COMPLAINT":   return "uploads/COMPLAINTS/";
+            case "APPLICATION": return "uploads/APPLICATIONS/";
+            case "REPORT":      return "uploads/REPORTS/";
+            case "CONTRACT":    return "uploads/CONTRACTS/";
+            case "IDENTITY":    return "uploads/IDENTITY/";
+            case "LOAN":        return "uploads/LOANS/";
+            case "MORTGAGE":    return "uploads/MORTGAGES/";
+            case "FINANCIAL":   return "uploads/FINANCIAL/";
+            default:            return "uploads/GENERAL/";
+        }
     }
 
     private int assignPriority(String documentType) {
         if (documentType == null) return 3;
-        return switch (documentType.toUpperCase()) {
-            case "COMPLAINT", "IDENTITY" -> 1;
-            case "INVOICE", "CONTRACT"   -> 2;
-            default                       -> 3;
-        };
+        switch (documentType.toUpperCase()) {
+            case "COMPLAINT":
+            case "IDENTITY":  return 1;
+            case "INVOICE":
+            case "CONTRACT":  return 2;
+            default:          return 3;
+        }
     }
 }
